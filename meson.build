@@ -2,8 +2,8 @@
 # Yukon module — Meson build system
 # ==============================================================================
 #
-#   meson setup build-meson --cross-file cross/i686-cact-clang.ini \
-#       -Dkern_root=../CactKernel-x86_32 -Dlocal_repo=../LocalRepoCactOS-x86_32
+#   meson setup build-meson --cross-file cross/x86_64-cact-clang.ini \
+#       -Dkern_root=../CactKernel-x86_64 -Dlocal_repo=../LocalRepoCactOS-x86_64
 #   ninja -C build-meson          # build-meson/yukon.cctk
 #   ninja -C build-meson stage    # copy into <local_repo>/lib
 #
@@ -62,7 +62,7 @@ mod_c_args += '-I' + src_root
 yukon_cctk = custom_target('yukon.cctk',
   input: 'yukon_mod.c',
   output: 'yukon.cctk',
-  command: cc.cmd_array() + ['-m32'] + mod_c_args +
+  command: cc.cmd_array() + ['-m64'] + mod_c_args +
            ['-MD', '-MF', '@DEPFILE@', '-c', '@INPUT@', '-o', '@OUTPUT@'],
   depfile: 'yukon.cctk.d',
   build_by_default: true)
