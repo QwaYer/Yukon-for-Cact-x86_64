@@ -19,7 +19,7 @@ extern void *memcpy(void *dst, const void *src, size_t n);
 extern void register_netdev(net_driver_t *drv);
 extern void unregister_netdev(net_driver_t *drv);
 extern net_driver_t *active_nic;
-extern void vmm_map(uint32_t *pd, uint32_t virt, uint32_t phys, int flags);
+extern void vmm_map(uint64_t *pd, uint64_t virt, uint64_t phys, int flags);
 extern skb_t *skb_alloc(void);
 extern void kfree_skb(skb_t *skb);
 extern uint8_t *skb_put(skb_t *skb, uint16_t len);
@@ -144,10 +144,10 @@ static yukon_status_le_t *g_st_le;
 #define PAGE_PCD     0x10
 #define PAGE_PWT     0x8
 
-static inline uint32_t *get_current_pd(void) {
-    uint32_t val;
+static inline uint64_t *get_current_pd(void) {
+    uint64_t val;
     __asm__ __volatile__("mov %%cr3, %0" : "=r"(val));
-    return (uint32_t *)val;
+    return (uint64_t *)val;
 }
 
 static inline uint32_t yukon_mmio_read32(uint32_t off) {
