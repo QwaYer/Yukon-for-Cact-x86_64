@@ -19,7 +19,10 @@ extern void *memcpy(void *dst, const void *src, size_t n);
 extern void register_netdev(net_driver_t *drv);
 extern void unregister_netdev(net_driver_t *drv);
 extern net_driver_t *active_nic;
-extern void vmm_map(uint64_t *pd, uint64_t virt, uint64_t phys, int flags);
+/* Physical address -> the kernel direct-map VA at which it can be
+ * dereferenced.  Device MMIO lives in the direct map (uncached), shared by
+ * every address space, so a BAR needs no vmm_map() of its own. */
+extern void* vmm_p2v(uint64_t phys);
 extern skb_t *skb_alloc(void);
 extern void kfree_skb(skb_t *skb);
 extern uint8_t *skb_put(skb_t *skb, uint16_t len);
@@ -38,6 +41,7 @@ typedef struct {
     uint8_t attached;
     uint32_t saved_pci_cmd;
     uint32_t mmio_base;
+    uint64_t mmio_va;
     uint32_t mmio_size;
     uint8_t mac[6];
     uint8_t native_mac_ok;
@@ -144,34 +148,28 @@ static yukon_status_le_t *g_st_le;
 #define PAGE_PCD     0x10
 #define PAGE_PWT     0x8
 
-static inline uint64_t *get_current_pd(void) {
-    uint64_t val;
-    __asm__ __volatile__("mov %%cr3, %0" : "=r"(val));
-    return (uint64_t *)val;
-}
-
 static inline uint32_t yukon_mmio_read32(uint32_t off) {
-    volatile uint32_t *p = (volatile uint32_t *)(uintptr_t)(g_yukon.mmio_base + off);
+    volatile uint32_t *p = (volatile uint32_t *)(uintptr_t)(g_yukon.mmio_va + off);
     return *p;
 }
 
 static inline uint16_t yukon_mmio_read16(uint32_t off) {
-    volatile uint16_t *p = (volatile uint16_t *)(uintptr_t)(g_yukon.mmio_base + off);
+    volatile uint16_t *p = (volatile uint16_t *)(uintptr_t)(g_yukon.mmio_va + off);
     return *p;
 }
 
 static inline void yukon_mmio_write32(uint32_t off, uint32_t val) {
-    volatile uint32_t *p = (volatile uint32_t *)(uintptr_t)(g_yukon.mmio_base + off);
+    volatile uint32_t *p = (volatile uint32_t *)(uintptr_t)(g_yukon.mmio_va + off);
     *p = val;
 }
 
 static inline void yukon_mmio_write16(uint32_t off, uint16_t val) {
-    volatile uint16_t *p = (volatile uint16_t *)(uintptr_t)(g_yukon.mmio_base + off);
+    volatile uint16_t *p = (volatile uint16_t *)(uintptr_t)(g_yukon.mmio_va + off);
     *p = val;
 }
 
 static inline void yukon_mmio_write8(uint32_t off, uint8_t val) {
-    volatile uint8_t *p = (volatile uint8_t *)(uintptr_t)(g_yukon.mmio_base + off);
+    volatile uint8_t *p = (volatile uint8_t *)(uintptr_t)(g_yukon.mmio_va + off);
     *p = val;
 }
 
@@ -265,12 +263,9 @@ static int yukon_setup_native_rx(void) {
 }
 
 static int yukon_map_mmio(uint32_t mmio_base) {
-    uint32_t start = mmio_base & ~0xFFFu;
-    uint32_t end = (mmio_base + YUKON_MMIO_WINDOW + 0xFFFu) & ~0xFFFu;
-    uint32_t va;
-    for (va = start; va < end; va += 0x1000u)
-        vmm_map(get_current_pd(), va, va, PAGE_PRESENT | PAGE_RW | PAGE_PCD | PAGE_PWT);
+    /* The BAR is reached through the direct map — no per-module mapping. */
     g_yukon.mmio_base = mmio_base;
+    g_yukon.mmio_va   = (uint64_t)(uintptr_t)vmm_p2v(mmio_base);
     g_yukon.mmio_size = YUKON_MMIO_WINDOW;
     return 0;
 }
@@ -443,6 +438,7 @@ static void yukon_detach(void) {
     g_yukon.attached = 0;
     g_prev_nic = NULL;
     g_yukon.mmio_base = 0;
+    g_yukon.mmio_va   = 0;
     g_yukon.mmio_size = 0;
     g_yukon.native_mac_ok = 0;
     g_yukon.native_tx_ok = 0;
@@ -498,6 +494,7 @@ int pci_driver_probe(pci_device_t *pdev) {
     g_yukon.irq_line = pdev->irq_line;
     g_prev_nic = active_nic;
     g_yukon.mmio_base = 0;
+    g_yukon.mmio_va   = 0;
     g_yukon.mmio_size = 0;
     g_yukon.native_mac_ok = 0;
     g_yukon.native_tx_ok = 0;
